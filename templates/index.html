@@ -4,9 +4,31 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nosy Neighbour</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <meta name="description" content="Slå op på dansk ejendomsdata: hæftelser, ejere, vurdering, matrikel og salgshistorik.">
+  <meta name="robots" content="noindex, nofollow">
+  <meta property="og:title" content="Nosy Neighbour">
+  <meta property="og:description" content="Slå op på dansk ejendomsdata: hæftelser, ejere, vurdering, matrikel og salgshistorik.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://nosy.dossing.net/">
+  <meta property="og:image" content="https://nosy.dossing.net/favicon.svg">
+  <link rel="preconnect" href="https://api.dataforsyningen.dk" crossorigin>
+  <link rel="preconnect" href="https://a.tile.openstreetmap.org" crossorigin>
+  <link rel="preconnect" href="https://b.tile.openstreetmap.org" crossorigin>
+  <link rel="preconnect" href="https://c.tile.openstreetmap.org" crossorigin>
+  <!-- Leaflet 1.9.4 — self-hosted from /static/leaflet/. See static/leaflet/VERSION. -->
+  <link rel="stylesheet" href="/static/leaflet/leaflet.css"/>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* Screen-reader-only heading for SEO/a11y without visual impact. */
+    .visually-hidden {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0);
+      white-space: nowrap; border: 0;
+    }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -77,6 +99,11 @@
       line-height: 1.8;
     }
     .empty-state strong { display: block; font-size: 16px; color: #666; margin-bottom: 8px; }
+    .empty-state .empty-logo {
+      width: 40px; height: 40px;
+      display: block;
+      margin: 0 auto 10px;
+    }
 
     /* ── Entry (per address) ── */
     .entry-header {
@@ -142,6 +169,15 @@
     td:first-child { color: #6b7280; width: 130px; }
     td:last-child { font-weight: 500; }
 
+    /* ── Sales history table (4 columns, different layout than key/value) ── */
+    .sales-history td,
+    .sales-history th { padding: 4px 6px 4px 0; white-space: nowrap; }
+    .sales-history td:first-child { color: #6b7280; width: auto; font-variant-numeric: tabular-nums; }
+    .sales-history td:last-child { font-weight: 400; white-space: normal; }
+    .sales-history th { text-align: left; font-size: 11px; color: #6b7280; font-weight: 500; border-bottom: 1px solid #e5e7eb; }
+    [data-theme="dark"] .sales-history th { border-bottom-color: #334155; }
+    .sales-history td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
     /* ── Mortgage items ── */
     .mortgage {
       border: 1px solid #e5e7eb;
@@ -197,6 +233,21 @@
       color: #6b7280;
     }
 
+    /* ── Retry button (shown in the error banner) ── */
+    .retry-btn {
+      margin-left: 10px;
+      padding: 3px 10px;
+      font-size: 12px;
+      background: #fff;
+      color: #dc2626;
+      border: 1px solid #dc2626;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .retry-btn:hover { background: #dc2626; color: #fff; }
+    [data-theme="dark"] .retry-btn { background: #1f2937; color: #f87171; border-color: #f87171; }
+    [data-theme="dark"] .retry-btn:hover { background: #f87171; color: #1f2937; }
+
     /* ── Map ── */
     #map { flex: 1; cursor: crosshair; }
 
@@ -229,7 +280,7 @@
     .darkmode-btn:hover { background: #f3f4f6; color: #111; }
 
     /* ── History button ── */
-    #search-box { display: flex; gap: 8px; flex-wrap: wrap; }
+    #search-box { display: flex; gap: 8px; }
     #search-input { flex: 1; min-width: 0; }
     .history-btn {
       width: 38px; flex-shrink: 0;
@@ -323,11 +374,15 @@
     // Apply theme before render to avoid flash
     (function() {
       const t = localStorage.getItem('nosy-theme');
-      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
     })();
   </script>
 </head>
 <body>
+
+<h1 class="visually-hidden">Nosy Neighbour — dansk ejendomsopslag</h1>
 
 <div id="sidebar">
   <div id="search-box">
@@ -339,6 +394,7 @@
   </div>
   <div id="results">
     <div class="empty-state">
+      <img class="empty-logo" src="/favicon.svg" alt="" aria-hidden="true">
       <strong>Nosy Neighbour</strong>
       Søg på en adresse eller klik på kortet.<br>Op til 10 adresser ad gangen.
     </div>
@@ -347,7 +403,10 @@
 
 <div id="map"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Leaflet 1.9.4 — self-hosted from /static/leaflet/.
+     To upgrade: bump the version in static/leaflet/VERSION and re-run the
+     download steps documented there. -->
+<script src="/static/leaflet/leaflet.js"></script>
 <script>
 // ── Map setup ──────────────────────────────────────────────────────────────
 const map = L.map('map').setView([56.0, 10.5], 7);
@@ -372,8 +431,12 @@ function loanAgeMonths(alias) {
   try {
     const [d, m, y] = datePart.split('.').map(Number);
     const reg = new Date(y, m - 1, d);
+    if (isNaN(reg.getTime())) return null;
     const now = new Date();
-    return (now.getFullYear() - reg.getFullYear()) * 12 + (now.getMonth() - reg.getMonth());
+    // Bug 13: use day-difference for more accurate month count (avg 30.44 days/month)
+    const dayDiff = (now - reg) / 86400000;
+    if (dayDiff < 0) return null;
+    return Math.round(dayDiff / 30.44);
   } catch { return null; }
 }
 
@@ -431,7 +494,7 @@ input.addEventListener('input', () => {
 });
 
 input.addEventListener('keydown', e => {
-  if (e.key === 'Escape') hideSuggestions();
+  if (e.key === 'Escape') { hideSuggestions(); hideHistory(); }
   if (e.key === 'Enter' && currentSuggestions.length > 0) {
     selectSuggestion(currentSuggestions[0]);
   }
@@ -447,7 +510,7 @@ async function fetchSuggestions(q) {
   currentSuggestions = await res.json();
   if (!currentSuggestions.length) { hideSuggestions(); return; }
   suggestionsEl.innerHTML = currentSuggestions
-    .map((s, i) => `<div class="suggestion" data-i="${i}">${s.label}</div>`)
+    .map((s, i) => `<div class="suggestion" data-i="${i}">${esc(s.label)}</div>`)
     .join('');
   suggestionsEl.style.display = 'block';
   suggestionsEl.querySelectorAll('.suggestion').forEach(el => {
@@ -469,30 +532,111 @@ function selectSuggestion(s) {
 
 // ── Multi-address management ───────────────────────────────────────────────
 async function addAddress(label, lat, lng) {
+  // Bug 9: reject duplicates (same label already in the list)
+  if (entries.some(e => e.label === label)) {
+    return;
+  }
   const idx = entries.length;
   const marker = L.marker([lat, lng], { icon: numberedIcon(idx + 1) }).addTo(map);
   marker.on('click', () => scrollToEntry(idx));
 
-  const entry = { label, lat, lng, data: null, error: null, loading: true, marker };
+  const entry = {
+    label, lat, lng,
+    data: null, error: null, loading: true, status: null,
+    marker, salesHistory: null, salesLoading: true,
+  };
   entries.push(entry);
   renderSidebar();
-
-  try {
-    const res = await fetch(`/api/lookup?q=${encodeURIComponent(label)}`);
-    if (res.ok) {
-      entry.data = await res.json();
-      saveToHistory(label, lat, lng);
-      const owners = (entry.data.ejere || []).map(e => `${e.navn} (${e.andel})`).join('<br>');
-      marker.bindPopup(`<div class="popup-address">${entry.data.adresse}</div><div class="popup-owners">${owners}</div>`);
-    } else {
-      entry.error = (await res.json()).detail || 'Fejl';
-    }
-  } catch {
-    entry.error = 'Netværksfejl';
-  }
-  entry.loading = false;
-  renderSidebar();
   scrollToEntry(idx);
+
+  await loadEntry(entry);
+  scrollToEntry(entries.indexOf(entry));
+
+  // Fetch sales history in the background; re-render when done.
+  fetch(`/api/sales-history?q=${encodeURIComponent(label)}`)
+    .then(r => r.ok ? r.json() : null)
+    .then(sh => { entry.salesHistory = sh; })
+    .catch(() => { /* ignore — optional enrichment */ })
+    .finally(() => {
+      // Bug 14: entry may have been removed while fetch was in flight
+      if (!entries.includes(entry)) return;
+      entry.salesLoading = false;
+      renderSidebar();
+    });
+}
+
+// Fetch /api/lookup for an entry, with one automatic retry on 5xx/network
+// errors. On slow upstream tinglysning.dk we want to be patient rather than
+// give up — the backend already caps each request at 45s and retries once
+// on timeout, so worst-case per attempt is ~1.5 min.
+async function loadEntry(entry) {
+  entry.loading = true;
+  entry.error = null;
+  entry.status = 'loading';
+  renderSidebar();
+
+  const shouldRetry = (res, err) => {
+    if (err) return true;                    // network / abort
+    if (!res) return true;
+    if (res.status >= 500) return true;      // 502/504 from our backend
+    return false;
+  };
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let res = null, err = null, body = null;
+    try {
+      res = await fetch(`/api/lookup?q=${encodeURIComponent(entry.label)}`);
+    } catch (e) {
+      err = e;
+    }
+
+    if (res && res.ok) {
+      try {
+        entry.data = await res.json();
+        entry.error = null;
+        entry.status = 'ok';
+        saveToHistory(entry.label, entry.lat, entry.lng);
+        const owners = (entry.data.ejere || []).map(e => `${esc(e.navn)} (${esc(e.andel)})`).join('<br>');
+        entry.marker.bindPopup(`<div class="popup-address">${esc(entry.data.adresse)}</div><div class="popup-owners">${owners}</div>`);
+      } catch {
+        entry.error = 'Uventet svar fra serveren.';
+        entry.status = 'error';
+      }
+      entry.loading = false;
+      renderSidebar();
+      return;
+    }
+
+    // Non-OK or network error. Try to extract a message.
+    if (res) {
+      try { body = await res.json(); } catch { /* ignore */ }
+    }
+
+    if (attempt === 0 && shouldRetry(res, err) && entries.includes(entry)) {
+      // Show a retry banner and wait 3s before trying again.
+      entry.status = 'retrying';
+      entry.error = null;
+      renderSidebar();
+      await new Promise(r => setTimeout(r, 3000));
+      if (!entries.includes(entry)) return;  // user removed it while waiting
+      continue;
+    }
+
+    // Final failure.
+    entry.error = (body && body.detail) ||
+                  (err ? 'Kunne ikke kontakte serveren.' : `Serverfejl (HTTP ${res.status})`);
+    entry.status = 'error';
+    entry.loading = false;
+    renderSidebar();
+    return;
+  }
+}
+
+// Called from the "Prøv igen" button in the sidebar.
+function retryEntry(i) {
+  const entry = entries[i];
+  if (!entry) return;
+  loadEntry(entry);
 }
 
 function removeEntry(i) {
@@ -515,7 +659,7 @@ function scrollToEntry(idx) {
 function renderSidebar() {
   const el = document.getElementById('results');
   if (entries.length === 0) {
-    el.innerHTML = `<div class="empty-state"><strong>Nosy Neighbour</strong>Søg på en adresse eller klik på kortet.<br>Op til 10 adresser ad gangen.</div>`;
+    el.innerHTML = `<div class="empty-state"><img class="empty-logo" src="/favicon.svg" alt="" aria-hidden="true"><strong>Nosy Neighbour</strong>Søg på en adresse eller klik på kortet.<br>Op til 10 adresser ad gangen.</div>`;
     return;
   }
 
@@ -532,17 +676,29 @@ function renderSidebar() {
     section.appendChild(html(`
       <div class="entry-header">
         <span class="entry-num">${i + 1}</span>
-        <span class="entry-label">${entry.label}</span>
+        <span class="entry-label">${esc(entry.label)}</span>
         <button class="entry-remove" onclick="removeEntry(${i})" title="Fjern">×</button>
       </div>
     `));
 
     if (entry.loading) {
-      section.appendChild(html('<div class="spinner">Henter oplysninger…</div>'));
+      if (entry.status === 'retrying') {
+        section.appendChild(html('<div class="spinner">Tinglysning.dk svarer langsomt — forsøger igen om et øjeblik…</div>'));
+      } else {
+        section.appendChild(html('<div class="spinner">Henter fra tinglysning.dk…</div>'));
+      }
     } else if (entry.error) {
-      section.appendChild(html(`<div style="color:#dc2626;padding:4px 0 10px">${entry.error}</div>`));
+      section.appendChild(html(`
+        <div style="color:#dc2626;padding:4px 0 10px">
+          ${esc(entry.error)}
+          <button class="retry-btn" onclick="retryEntry(${i})">Prøv igen</button>
+        </div>
+      `));
     } else if (entry.data) {
-      renderEntryCards(section, entry.data);
+      renderEntryCards(section, entry.data, entry.salesHistory);
+      if (entry.salesLoading) {
+        section.appendChild(html('<div class="spinner">Henter salgshistorik fra Boligsiden…</div>'));
+      }
     }
 
     el.appendChild(section);
@@ -552,11 +708,26 @@ function renderSidebar() {
   });
 }
 
-function renderEntryCards(container, d) {
+function renderEntryCards(container, d, salesHistory) {
+  if (d._matrikel_fallback) {
+    const fb = d._matrikel_fallback;
+    container.appendChild(html(`
+      <div class="card" style="border-left:3px solid #d97706;background:#fffbeb">
+        <div class="card-title" style="color:#92400e">Andelsbolig / fællesejendom</div>
+        <div style="font-size:13px;line-height:1.5">
+          Den søgte adresse har ikke sin egen tingbog. Tingbogen nedenfor dækker
+          hele ejendommen (matrikel <strong>${esc(fb.matrikelnr)}</strong>,
+          ejerlav ${esc(fb.ejerlavskode)}), som typisk ejes af en andelsbolig\u00ADforening
+          eller almen boligorganisation.
+          ${fb.parent_adresse ? `Hovedadresse: <strong>${esc(fb.parent_adresse)}</strong>.` : ''}
+        </div>
+      </div>
+    `));
+  }
   container.appendChild(html(`
     <div class="card">
-      <div class="address-header">${d.adresse}</div>
-      <div class="property-type">${d.ejendomstype}</div>
+      <div class="address-header">${esc(d.adresse)}</div>
+      <div class="property-type">${esc(d.ejendomstype)}</div>
     </div>
   `));
 
@@ -565,7 +736,7 @@ function renderEntryCards(container, d) {
       <div class="card">
         <div class="card-title">Matrikler</div>
         <table>${d.matrikler.map(m => `
-          <tr><td>${m.matrikelnummer}</td><td>${m.landsejerlavnavn}</td></tr>
+          <tr><td>${esc(m.matrikelnummer)}</td><td>${esc(m.landsejerlavnavn)}</td></tr>
         `).join('')}</table>
       </div>
     `));
@@ -595,14 +766,17 @@ function renderEntryCards(container, d) {
       </td></tr>
       <tr><td>Samlet pant (est.)</td><td>${fmt(Math.round(totalDebt))} kr.</td></tr>
       <tr><td>Friværdi (est.)</td><td style="color:${frivaerdiColor};font-weight:700">${fmt(Math.round(frivaerdi))} kr.${frivaerdiPct !== null ? ` <span style="color:#6b7280;font-weight:400">(${frivaerdiPct}%)</span>` : ''}</td></tr>
-    ` : '';
+    ` : `
+      <tr><td>Samlet pant</td><td style="color:#6b7280;font-style:italic">— Ingen gæld —</td></tr>
+      <tr><td>Friværdi</td><td style="color:#166534;font-weight:700">${fmt(v.ejendomsvaerdi)} kr. <span style="color:#6b7280;font-weight:400">(100%)</span></td></tr>
+    `;
     container.appendChild(html(`
       <div class="card">
-        <div class="card-title">Vurdering (${v.vurderingsdato})</div>
+        <div class="card-title">Vurdering (${esc(v.vurderingsdato)})</div>
         <table>
           <tr><td>Ejendomsværdi</td><td>${fmt(v.ejendomsvaerdi)} kr.</td></tr>
           <tr><td>Grundværdi</td><td>${fmt(v.grundvaerdi)} kr.</td></tr>
-          <tr><td>Kommune</td><td>${v.kommune}</td></tr>
+          <tr><td>Kommune</td><td>${esc(v.kommune)}</td></tr>
           ${debtRow}
         </table>
       </div>
@@ -614,7 +788,7 @@ function renderEntryCards(container, d) {
       <div class="card">
         <div class="card-title">Ejere</div>
         <table>${d.ejere.map(e => `
-          <tr><td>${e.andel}</td><td>${e.navn}</td></tr>
+          <tr><td>${esc(e.andel)}</td><td>${esc(e.navn)}</td></tr>
         `).join('')}</table>
       </div>
     `));
@@ -630,7 +804,34 @@ function renderEntryCards(container, d) {
     container.appendChild(html(`
       <div class="card">
         <div class="card-title">Servitutter</div>
-        ${d.servitutter.map(s => `<div class="easement">[${s.prioritet}] ${s.tekst}</div>`).join('')}
+        ${d.servitutter.map(s => `<div class="easement">[${esc(s.prioritet)}] ${esc(s.tekst)}</div>`).join('')}
+      </div>
+    `));
+  }
+
+  if (salesHistory?.registrations?.length) {
+    const monthsDa = ['jan','feb','mar','apr','maj','jun','jul','aug','sep','okt','nov','dec'];
+    const shortDate = (iso) => {
+      if (!iso) return '';
+      const [y, m] = iso.split('-');
+      return `${monthsDa[parseInt(m, 10) - 1] || m} ${y}`;
+    };
+    const rows = salesHistory.registrations.map(r => {
+      const pricePerM2 = r.perAreaPrice ? `${fmt(r.perAreaPrice)} kr/m²` : '—';
+      return `<tr>
+        <td>${shortDate(r.date)}</td>
+        <td class="num">${fmt(r.amount)} kr.</td>
+        <td class="num">${pricePerM2}</td>
+        <td>${esc(r.typeLabel || '')}</td>
+      </tr>`;
+    }).join('');
+    container.appendChild(html(`
+      <div class="card">
+        <div class="card-title">Salgshistorik <span style="color:#6b7280;font-weight:400;font-size:11px">(via Boligsiden)</span></div>
+        <table class="sales-history">
+          <thead><tr><th>Dato</th><th style="text-align:right">Pris</th><th style="text-align:right">Pris/m²</th><th>Type</th></tr></thead>
+          ${rows}
+        </table>
       </div>
     `));
   }
@@ -647,21 +848,21 @@ function renderMortgage(h) {
 
   if (lti && isVariable) {
     if (lti.source === 'isin') {
-      badgeHtml = `<span class="loan-type-badge badge-certain">${lti.loan_type} (ISIN)</span>`;
+      badgeHtml = `<span class="loan-type-badge badge-certain">${esc(lti.loan_type)} (ISIN)</span>`;
     } else if (lti.source === 'estimated') {
       if (lti.uncertain) {
         badgeHtml = `<span class="loan-type-badge badge-uncertain">Usikker (lav rente — ældre lån?)</span>`;
       } else {
         const cls = lti.close_to?.length ? 'badge-close' : 'badge-certain';
-        const closeStr = lti.close_to?.length ? ` — tæt på ${lti.close_to.join(', ')}` : '';
-        badgeHtml = `<span class="loan-type-badge ${cls}">${lti.loan_type}${closeStr}</span>`;
+        const closeStr = lti.close_to?.length ? ` — tæt på ${esc(lti.close_to.join(', '))}` : '';
+        badgeHtml = `<span class="loan-type-badge ${cls}">${esc(lti.loan_type)}${closeStr}</span>`;
       }
 
       if (lti.candidates?.length) {
         const maxDelta = Math.max(...lti.candidates.map(c => c.delta));
         candidatesHtml = `<div class="candidates">${lti.candidates.map((c, i) => `
           <div class="candidate ${i === 0 ? 'best' : ''}">
-            <span>${c.name}</span>
+            <span>${esc(c.name)}</span>
             <span>Δ ${c.delta.toFixed(4)}%</span>
           </div>
           <div class="delta-bar-wrap"><div class="delta-bar" style="width:${maxDelta > 0 ? Math.round((1 - c.delta / maxDelta) * 100) : 100}%"></div></div>
@@ -673,11 +874,11 @@ function renderMortgage(h) {
   return html(`
     <div class="mortgage">
       <div class="mortgage-header">
-        <span class="mortgage-type">[${h.prioritet}] ${h.haeftelsestype}</span>
-        <span class="mortgage-amount">${h.hovedstol}</span>
+        <span class="mortgage-type">[${esc(h.prioritet)}] ${esc(h.haeftelsestype)}</span>
+        <span class="mortgage-amount">${esc(h.hovedstol)}</span>
       </div>
       <div class="mortgage-meta">
-        ${h.rente}% · ${isVariable ? 'variabel' : 'fast'}
+        ${esc(h.rente)}% · ${isVariable ? 'variabel' : 'fast'}
         ${creditors ? ' · ' + creditors : ''}
         ${regDate ? ' · ' + regDate : ''}
       </div>
@@ -700,6 +901,19 @@ function html(str) {
   const t = document.createElement('template');
   t.innerHTML = str.trim();
   return t.content.firstChild;
+}
+
+// HTML-escape helper. Use for anything that comes from upstream APIs
+// (owner names, addresses, easement texts, error messages from the
+// backend) or from localStorage before interpolating it into a
+// template literal. Prevents <, >, & and quote injection.
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // ── Dark mode ─────────────────────────────────────────────────────────────
@@ -784,8 +998,8 @@ function renderHistory() {
   }
   historyDropdown.innerHTML = hist.map((h, i) => `
     <div class="history-entry" data-i="${i}">
-      <span class="history-label">${h.label}</span>
-      <span class="history-time">${timeAgo(h.ts)}</span>
+      <span class="history-label">${esc(h.label)}</span>
+      <span class="history-time">${esc(timeAgo(h.ts))}</span>
     </div>
   `).join('') + '<button class="history-clear" onclick="clearHistory()">Ryd historik</button>';
 

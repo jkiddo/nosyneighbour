@@ -1,0 +1,27 @@
+leaflet@1.9.4
+
+Vendored from https://unpkg.com/leaflet@1.9.4/dist/ on 2026-04-21.
+
+Files:
+  leaflet.css                 (14,806 B)
+  leaflet.js                  (147,552 B)
+  images/marker-icon.png      (1,466 B)
+  images/marker-icon-2x.png   (2,464 B)
+  images/marker-shadow.png    (618 B)
+  images/layers.png           (696 B)
+  images/layers-2x.png        (1,259 B)
+
+To upgrade:
+
+  VERSION=1.9.4   # set new version
+  cd static/leaflet
+  curl -fsSO https://unpkg.com/leaflet@${VERSION}/dist/leaflet.css
+  curl -fsSO https://unpkg.com/leaflet@${VERSION}/dist/leaflet.js
+  for img in marker-icon.png marker-icon-2x.png marker-shadow.png \
+             layers.png layers-2x.png; do
+    curl -fsSL -o images/$img \
+      https://unpkg.com/leaflet@${VERSION}/dist/images/$img
+  done
+
+Then update the version line at the top of this file, the HTML comments
+in templates/index.html and run a smoke test (markers + tile loading).
